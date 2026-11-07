@@ -1,28 +1,60 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 
 export async function GET() {
-  try {
-    const supabase = await createClient();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    // Verify client initialization without touching database tables
-    const { error } = await supabase.auth.getSession();
-
-    if (error) {
-      return NextResponse.json({ status: 'error', message: error.message }, { status: 500 });
-    }
-
-    const keyConfigured = Boolean(
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const hasConfig = Boolean(supabaseUrl && publishableKey);
+  if (!hasConfig) {
+    return NextResponse.json(
+      {
+        status: 'unhealthy',
+        checks: {
+          environment: 'missing',
+          api_reachability: 'unreachable',
+          database_query: 'not_verified',
+        },
+      },
+      { status: 500 }
     );
-
-    return NextResponse.json({
-      status: 'connected',
-      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ? 'Configured' : 'Missing',
-      publishableKey: keyConfigured ? 'Configured' : 'Missing',
-    });
-  } catch (err: any) {
-    return NextResponse.json({ status: 'error', message: err?.message || 'Connection failed' }, { status: 500 });
   }
+
+  let isApiReachable = false;
+  try {
+    const res = await fetch(`${supabaseUrl}/rest/v1/`, {
+      method: 'GET',
+      headers: {
+        apikey: publishableKey!,
+      },
+      cache: 'no-store',
+    });
+    isApiReachable = res.ok;
+  } catch {
+    isApiReachable = false;
+  }
+
+  if (!isApiReachable) {
+    return NextResponse.json(
+      {
+        status: 'degraded',
+        checks: {
+          environment: 'configured',
+          api_reachability: 'unreachable',
+          database_query: 'not_verified',
+        },
+      },
+      { status: 502 }
+    );
+  }
+
+  return NextResponse.json({
+    status: 'healthy',
+    checks: {
+      environment: 'configured',
+      api_reachability: 'reachable',
+      database_query: 'not_verified',
+    },
+  });
 }
