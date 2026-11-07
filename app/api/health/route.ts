@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  const hasConfig = Boolean(supabaseUrl && publishableKey);
+  const hasConfig = Boolean(rawUrl && publishableKey);
   if (!hasConfig) {
     return NextResponse.json(
       {
@@ -21,9 +21,12 @@ export async function GET() {
     );
   }
 
+  const supabaseUrl = rawUrl!.replace(/\/+$/, '');
+
+  // 1. Independent API Gateway Reachability Check (Tested with publishable key)
   let isApiReachable = false;
   try {
-    const res = await fetch(`${supabaseUrl}/rest/v1/`, {
+    const res = await fetch(`${supabaseUrl}/auth/v1/health`, {
       method: 'GET',
       headers: {
         apikey: publishableKey!,
@@ -49,6 +52,7 @@ export async function GET() {
     );
   }
 
+  // 2. Database Query: Returns "not_verified" as no test table is designated
   return NextResponse.json({
     status: 'healthy',
     checks: {
